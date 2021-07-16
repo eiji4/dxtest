@@ -56,6 +56,13 @@ ID3D12Resource* constBuff = nullptr;
 ID3D12Resource* materialBuff = nullptr;
 ID3D12DescriptorHeap* materialDescHeap = nullptr;
 
+
+ID3D12DescriptorHeap* cbvDescHeap = nullptr;
+// descriptor heap for CBV
+
+
+
+
 struct MaticesData {
 	XMMATRIX world;
 	XMMATRIX viewproj;
@@ -690,12 +697,12 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 	// Create root signature
 	{
 		// create descriptor range
-		D3D12_DESCRIPTOR_RANGE descTblRange[2] = {};
+		D3D12_DESCRIPTOR_RANGE descTblRange[3] = {};
 		// texture register
-		//descTblRange[0].NumDescriptors = 1;
-		//descTblRange[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
-		//descTblRange[0].BaseShaderRegister = 0;
-		//descTblRange[0].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+		descTblRange[2].NumDescriptors = 1;
+		descTblRange[2].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+		descTblRange[2].BaseShaderRegister = 0;
+		descTblRange[2].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 		// Matrix register
 		descTblRange[0].NumDescriptors = 1;
 		descTblRange[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;
@@ -710,7 +717,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 
 
 		// create root parameter (Descriptor Table)
-		D3D12_ROOT_PARAMETER rootParm[2] = {};
+		D3D12_ROOT_PARAMETER rootParm[3] = {};
 		rootParm[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
 		rootParm[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
 		rootParm[0].DescriptorTable.pDescriptorRanges = descTblRange;
@@ -719,6 +726,10 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		rootParm[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
 		rootParm[1].DescriptorTable.pDescriptorRanges = &descTblRange[1];
 		rootParm[1].DescriptorTable.NumDescriptorRanges = 1;
+		rootParm[2].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+		rootParm[2].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+		rootParm[2].DescriptorTable.pDescriptorRanges = &descTblRange[2];
+		rootParm[2].DescriptorTable.NumDescriptorRanges = 1;
 
 		// create sampler
 		D3D12_STATIC_SAMPLER_DESC samplerDesc = {};
@@ -736,7 +747,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		D3D12_ROOT_SIGNATURE_DESC rootSignatureDesc = {};
 		rootSignatureDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
 		rootSignatureDesc.pParameters = rootParm;
-		rootSignatureDesc.NumParameters = 2;
+		rootSignatureDesc.NumParameters = 3;
 		rootSignatureDesc.pStaticSamplers = &samplerDesc;
 		rootSignatureDesc.NumStaticSamplers = 1;
 		ID3DBlob* rootSigBlob = nullptr;
@@ -875,6 +886,8 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		_cmdList->SetGraphicsRootDescriptorTable(1, materialDescHeap->GetGPUDescriptorHandleForHeapStart()); // material
 		_cmdList->SetDescriptorHeaps(1, &matrixDescHeap); // matrix
 		_cmdList->SetGraphicsRootDescriptorTable(0, matrixDescHeap->GetGPUDescriptorHandleForHeapStart()); // matrix	
+		_cmdList->SetDescriptorHeaps(1, &texDescHeap); // matrix
+		_cmdList->SetGraphicsRootDescriptorTable(2, texDescHeap->GetGPUDescriptorHandleForHeapStart()); // tex	
 
 
 		_cmdList->RSSetViewports(1, &viewport);
