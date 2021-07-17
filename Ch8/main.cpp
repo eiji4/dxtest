@@ -56,9 +56,29 @@ ID3D12Resource* constBuff = nullptr;
 ID3D12Resource* materialBuff = nullptr;
 ID3D12DescriptorHeap* materialDescHeap = nullptr;
 
+struct MaterialForHlsl
+{
+	XMFLOAT3 diffuse;
+	float alpha;
+	float specularity;
+	XMFLOAT3 specular;
+	XMFLOAT3 ambient;
+};
 
-ID3D12DescriptorHeap* cbvDescHeap = nullptr;
-// descriptor heap for CBV
+struct otherMaterialInfo
+{
+	char texFilePath[20];
+	unsigned char toonIdx;
+	unsigned char edgeFlg;
+};
+
+struct Material
+{
+	unsigned int indicesNum;
+	MaterialForHlsl material;
+	otherMaterialInfo otherInfo;
+};
+std::vector<Material> materials;
 
 
 
@@ -335,31 +355,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		fclose(fp);
 
 
-
-		struct MaterialForHlsl
-		{
-			XMFLOAT3 diffuse;
-			float alpha;
-			float specularity;
-			XMFLOAT3 specular;
-			XMFLOAT3 ambient;
-		};
-
-		struct otherMaterialInfo
-		{
-			char texFilePath[20];
-			unsigned char toonIdx;
-			unsigned char edgeFlg;
-		};
-
-		struct Material
-		{
-			unsigned int indicesNum;
-			MaterialForHlsl material;
-			otherMaterialInfo otherInfo;
-		};
-
-		std::vector<Material> materials(pmdMaterials.size());
+		materials.resize(pmdMaterials.size());
 
 		for (int i = 0; i < pmdMaterials.size(); i++)
 		{
@@ -882,12 +878,13 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		_cmdList->SetPipelineState(_pso);
 		_cmdList->SetGraphicsRootSignature(_rootSignature);
 
-		_cmdList->SetDescriptorHeaps(1, &materialDescHeap); // material			
-		_cmdList->SetGraphicsRootDescriptorTable(1, materialDescHeap->GetGPUDescriptorHandleForHeapStart()); // material
+		
 		_cmdList->SetDescriptorHeaps(1, &matrixDescHeap); // matrix
 		_cmdList->SetGraphicsRootDescriptorTable(0, matrixDescHeap->GetGPUDescriptorHandleForHeapStart()); // matrix	
 		_cmdList->SetDescriptorHeaps(1, &texDescHeap); // matrix
 		_cmdList->SetGraphicsRootDescriptorTable(2, texDescHeap->GetGPUDescriptorHandleForHeapStart()); // tex	
+		_cmdList->SetDescriptorHeaps(1, &materialDescHeap); // material		
+		//_cmdList->SetGraphicsRootDescriptorTable(1, materialDescHeap->GetGPUDescriptorHandleForHeapStart()); // material
 
 
 		_cmdList->RSSetViewports(1, &viewport);
@@ -922,7 +919,19 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		float clearColor[] = { 1.0f, 1.0f, 1.0f, 1.0f };
 		_cmdList->ClearRenderTargetView(rtvH, clearColor, 0, nullptr);
 		_cmdList->ClearDepthStencilView(dsvH, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
-		_cmdList->DrawIndexedInstanced(indicesNum, 1, 0, 0, 0);
+
+
+		D3D12_GPU_DESCRIPTOR_HANDLE matHandle = materialDescHeap->GetGPUDescriptorHandleForHeapStart();
+		unsigned int idxOffset = 0;
+		for (Material m : materials)
+		{
+			_cmdList->SetGraphicsRootDescriptorTable(1, matHandle);
+			_cmdList->DrawIndexedInstanced(m.indicesNum, 1, idxOffset, 0, 0);
+			matHandle.ptr += _dev->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+			idxOffset += m.indicesNum;
+		}
+
+		
 
 
 		// Resource Barrier
