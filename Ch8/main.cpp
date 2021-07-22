@@ -2,6 +2,7 @@
 #include <tchar.h>
 #include <vector>
 #include <string>
+#include <algorithm>
 #include <d3d12.h>
 #include <dxgi1_6.h>
 #include <d3dx12.h>
@@ -56,7 +57,10 @@ ID3D12Resource* constBuff = nullptr;
 ID3D12Resource* materialBuff = nullptr;
 ID3D12DescriptorHeap* materialDescHeap = nullptr;
 std::vector<ID3D12Resource*> textureResources;
-std::string strModelPath = "../Model/Hatsune_Miku.pmd";
+//std::string strModelPath = "../Model/Hatsune_Miku.pmd";
+std::string strModelPath = "../Model/ruka.pmd";
+//std::string strModelPath = "../Model/MEIKO.pmd";
+//std::string strModelPath = "../Model/haku.pmd";
 
 
 struct MaterialForHlsl
@@ -204,13 +208,30 @@ size_t AlignmentedSize(size_t size, size_t alignment)
 }
 
 
+std::string GetExtension(const std::string& path)
+{
+	int idx = path.rfind(".");
+	return path.substr(idx + 1, path.length() - idx - 1);
+}
+
+
+std::pair<std::string, std::string> SplitFileName(const std::string& path, const char splitter = '*')
+{
+	int idx = path.find(splitter);
+	std::pair<std::string, std::string> ret;
+	ret.first = path.substr(0, idx);
+	ret.second = path.substr(idx+1, path.length() -idx -1);
+	return ret;
+}
+
+
 std::string GetTexturePathFromModelAndTexPath(const std::string& modelPath, const char* texPath)
 {
-	int pathIndex1 = modelPath.rfind("/");
-	int pathIndex2 = modelPath.rfind("\\");
+	int pathIndex1 = modelPath.rfind('/');
+	int pathIndex2 = modelPath.rfind('\\');
 	int pathIndex = max(pathIndex1, pathIndex2);
 
-	std::string folderPath = modelPath.substr(0, modelPath.rfind("/"));
+	std::string folderPath = modelPath.substr(0, modelPath.rfind('/'));
 	return folderPath + "/" + texPath;
 }
 
@@ -523,7 +544,21 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 				textureResources[i] = nullptr;
 			}
 
-			std::string texFilePath = GetTexturePathFromModelAndTexPath(strModelPath, pmdMaterials[i].texFilePath);
+			std::string texFileName = pmdMaterials[i].texFilePath;
+			if (std::count(texFileName.begin(), texFileName.end(), '*') > 0)
+			{
+				std::pair<std::string, std::string> namePair = SplitFileName(texFileName);
+				if (GetExtension(namePair.first) == "sph" || GetExtension(namePair.first) == "spa")
+				{
+					texFileName = namePair.second;
+				}
+				else
+				{
+					texFileName = namePair.first;
+				}
+			}
+
+			std::string texFilePath = GetTexturePathFromModelAndTexPath(strModelPath, texFileName.c_str());
 			textureResources[i] = LoadTextureFromFile(texFilePath);
 		}
 
