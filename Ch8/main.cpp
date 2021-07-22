@@ -57,8 +57,10 @@ ID3D12Resource* constBuff = nullptr;
 ID3D12Resource* materialBuff = nullptr;
 ID3D12DescriptorHeap* materialDescHeap = nullptr;
 std::vector<ID3D12Resource*> textureResources;
+std::vector<ID3D12Resource*> sphTextureResources;
 //std::string strModelPath = "../Model/Hatsune_Miku.pmd";
-std::string strModelPath = "../Model/ruka.pmd";
+std::string strModelPath = "../Model/hatune_miku_metal.pmd";
+//std::string strModelPath = "../Model/ruka.pmd";
 //std::string strModelPath = "../Model/MEIKO.pmd";
 //std::string strModelPath = "../Model/haku.pmd";
 
@@ -537,29 +539,46 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 
 		// create an array of texture buffers
 		textureResources.resize(pmdMaterials.size());
+		sphTextureResources.resize(pmdMaterials.size());
 		for (int i=0; i<pmdMaterials.size(); i++)
 		{
 			if (strlen(pmdMaterials[i].texFilePath) == 0)
 			{
 				textureResources[i] = nullptr;
+				sphTextureResources[i] = nullptr;
 			}
 
 			std::string texFileName = pmdMaterials[i].texFilePath;
+			std::string sphTextureFileName;
 			if (std::count(texFileName.begin(), texFileName.end(), '*') > 0)
 			{
 				std::pair<std::string, std::string> namePair = SplitFileName(texFileName);
 				if (GetExtension(namePair.first) == "sph" || GetExtension(namePair.first) == "spa")
 				{
 					texFileName = namePair.second;
+					sphTextureFileName = namePair.first;
 				}
 				else
 				{
 					texFileName = namePair.first;
+					sphTextureFileName = namePair.second;
+
 				}
+			}
+			else if (std::count(texFileName.begin(), texFileName.end(), '*') == 0)
+			{
+				if (GetExtension(texFileName) == "sph" || GetExtension(texFileName) == "spa")
+				{
+					sphTextureFileName = texFileName;
+					texFileName = "";					
+				}
+
 			}
 
 			std::string texFilePath = GetTexturePathFromModelAndTexPath(strModelPath, texFileName.c_str());
+			std::string sphTexFilePath = GetTexturePathFromModelAndTexPath(strModelPath, sphTextureFileName.c_str());
 			textureResources[i] = LoadTextureFromFile(texFilePath);
+			sphTextureResources[i] = LoadTextureFromFile(sphTexFilePath);
 		}
 
 
@@ -569,7 +588,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		D3D12_DESCRIPTOR_HEAP_DESC matDescHeapDesc = {};
 		matDescHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 		matDescHeapDesc.NodeMask = 0;
-		matDescHeapDesc.NumDescriptors = materialNum * 2;
+		matDescHeapDesc.NumDescriptors = materialNum * 3;
 		matDescHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 		result = _dev->CreateDescriptorHeap(&matDescHeapDesc, IID_PPV_ARGS(&materialDescHeap));
 
@@ -592,6 +611,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 			matDescHeapHandle.ptr += increment;
 			matCBVDesc.BufferLocation += materialBuffSize;
 
+			// create descriptr for texture
 			if (textureResources[i] == nullptr)
 			{
 				srvDesc.Format = whiteTex->GetDesc().Format;
@@ -601,9 +621,20 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 			{
 				srvDesc.Format = textureResources[i]->GetDesc().Format;
 				_dev->CreateShaderResourceView(textureResources[i], &srvDesc, matDescHeapHandle);
-			}
+			}			
+			matDescHeapHandle.ptr += increment;
 
-			
+			// create descriptor for sphrical texture
+			if (sphTextureResources[i] == nullptr)
+			{
+				srvDesc.Format = whiteTex->GetDesc().Format;
+				_dev->CreateShaderResourceView(whiteTex, &srvDesc, matDescHeapHandle);
+			}
+			else
+			{
+				srvDesc.Format = sphTextureResources[i]->GetDesc().Format;
+				_dev->CreateShaderResourceView(sphTextureResources[i], &srvDesc, matDescHeapHandle);
+			}
 			matDescHeapHandle.ptr += increment;
 
 		}
@@ -772,7 +803,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		descTblRange[1].BaseShaderRegister = 1;
 		descTblRange[1].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 		// Texture register
-		descTblRange[2].NumDescriptors = 1;
+		descTblRange[2].NumDescriptors = 2;
 		descTblRange[2].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
 		descTblRange[2].BaseShaderRegister = 0;
 		descTblRange[2].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
@@ -983,7 +1014,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 
 
 		D3D12_GPU_DESCRIPTOR_HANDLE matHandle = materialDescHeap->GetGPUDescriptorHandleForHeapStart();
-		unsigned int incrementSize = _dev->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV) * 2;
+		unsigned int incrementSize = _dev->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV) * 3;
 		unsigned int idxOffset = 0;
 		for (Material m : materials)
 		{
