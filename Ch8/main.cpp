@@ -95,7 +95,8 @@ std::vector<Material> materials;
 
 struct MaticesData {
 	XMMATRIX world;
-	XMMATRIX viewproj;
+	XMMATRIX view;
+	XMMATRIX proj;
 };
 
 MaticesData* mapMatrix;
@@ -262,7 +263,6 @@ std::wstring GetWideStringFromString(const std::string& str)
 	assert(num1 == num2);
 	return wstr;
 }
-
 
 
 ID3D12Resource* LoadTextureFromFile(std::string& texPath)
@@ -800,7 +800,8 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 
 		result = constBuff->Map(0, nullptr, (void**)&mapMatrix);
 		mapMatrix->world = worldMat;
-		mapMatrix->viewproj = viewMat * projMat;
+		mapMatrix->view = viewMat;
+		mapMatrix->proj = projMat;
 
 
 		// create descriptor heap for CBV
