@@ -2,7 +2,9 @@
 #include <tchar.h>
 #include <vector>
 #include <string>
+#include <map>
 #include <algorithm>
+#include <functional>
 #include <d3d12.h>
 #include <dxgi1_6.h>
 #include <d3dx12.h>
@@ -268,9 +270,48 @@ std::wstring GetWideStringFromString(const std::string& str)
 
 ID3D12Resource* LoadTextureFromFile(std::string& texPath)
 {
+
+	using LoadLambda_t = std::function<HRESULT(const std::wstring& path, TexMetadata*, ScratchImage&)>;
+	std::map<std::string, LoadLambda_t> loadLambdaTable;
+
+	loadLambdaTable["sph"]
+		= loadLambdaTable["spa"]
+		= loadLambdaTable["bmp"]
+		= loadLambdaTable["png"]
+		= loadLambdaTable["jpg"]
+		= [](const std::wstring& path, TexMetadata* meta, ScratchImage& img)->HRESULT
+	{
+		return LoadFromWICFile(path.c_str(), WIC_FLAGS_NONE, meta, img);
+	};
+
+	loadLambdaTable["tga"]
+		= [](const std::wstring& path, TexMetadata* meta, ScratchImage& img)->HRESULT
+	{
+		return LoadFromTGAFile(path.c_str(), meta, img);
+	};
+
+	loadLambdaTable["dds"]
+		= [](const std::wstring& path, TexMetadata* meta, ScratchImage& img)->HRESULT
+	{
+		return LoadFromDDSFile(path.c_str(), DDS_FLAGS_NONE, meta, img);
+	};
+
+
+	std::wstring wtexpath = GetWideStringFromString(texPath);
+	std::string ext = GetExtension(texPath);
+
 	TexMetadata texmeta = {};
 	ScratchImage scratchImg = {};
-	result = LoadFromWICFile(GetWideStringFromString(texPath).c_str(), WIC_FLAGS_NONE, &texmeta, scratchImg);
+	if (loadLambdaTable[ext])
+	{
+		result = loadLambdaTable[ext](wtexpath, &texmeta, scratchImg);
+	}
+	else
+	{
+		return nullptr;
+	}
+
+
 	if (FAILED(result))
 	{
 		return nullptr;
