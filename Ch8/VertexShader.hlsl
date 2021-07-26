@@ -15,7 +15,7 @@ Output BasicVS(
 	output.normal = mul(world, normal);
 	output.vnormal = mul(view, output.normal);
 	output.uv = uv;
-	
+	output.ray = normalize(pos.xyz - eye);
 	//output.boneno = boneno;
 	//output.weight = weight;
 	return output;

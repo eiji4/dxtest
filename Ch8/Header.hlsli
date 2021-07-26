@@ -6,6 +6,7 @@ struct Output
 	float2 uv : TEXCOORD;
 	min16uint2 boneno : BONE_NO;
 	min16uint weight : WEIGHT;
+	float3 ray : VECTOR;
 };
 
 Texture2D<float4> tex : register(t0);
@@ -18,6 +19,7 @@ cbuffer cbuff0 : register(b0)
 	matrix world;
 	matrix view;
 	matrix proj;
+	float3 eye;
 }
 
 cbuffer Material : register(b1)

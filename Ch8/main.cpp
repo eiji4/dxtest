@@ -60,8 +60,8 @@ std::vector<ID3D12Resource*> textureResources;
 std::vector<ID3D12Resource*> sphTextureResources;
 std::vector<ID3D12Resource*> spaTextureResources;
 //std::string strModelPath = "../Model/Hatsune_Miku.pmd";
-//std::string strModelPath = "../Model/hatune_miku_metal.pmd";
-std::string strModelPath = "../Model/ruka.pmd";
+std::string strModelPath = "../Model/hatune_miku_metal.pmd";
+//std::string strModelPath = "../Model/ruka.pmd";
 //std::string strModelPath = "../Model/MEIKO.pmd";
 //std::string strModelPath = "../Model/haku.pmd";
 
@@ -70,8 +70,8 @@ struct MaterialForHlsl
 {
 	XMFLOAT3 diffuse;
 	float alpha;
-	float specularity;
 	XMFLOAT3 specular;
+	float specularity;	
 	XMFLOAT3 ambient;
 };
 
@@ -93,13 +93,14 @@ std::vector<Material> materials;
 
 
 
-struct MaticesData {
+struct SceneMatrix {
 	XMMATRIX world;
 	XMMATRIX view;
 	XMMATRIX proj;
+	XMFLOAT3 eye;
 };
 
-MaticesData* mapMatrix;
+SceneMatrix* mapMatrix;
 
 XMMATRIX worldMat;
 XMMATRIX viewMat;
@@ -628,7 +629,10 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 					spaTextureFileName = getSphOrSpa(texFileName, "spa");
 					texFileName = "";					
 				}
-
+				else
+				{
+					texFileName = texFileName;
+				}
 			}
 
 			std::string texFilePath = GetTexturePathFromModelAndTexPath(strModelPath, texFileName.c_str());
@@ -787,7 +791,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		projMat = XMMatrixPerspectiveFovLH(XM_PIDIV2, static_cast<float>(window_width) / static_cast<float>(window_height), 1.0f, 100.0f);
 
 		D3D12_HEAP_PROPERTIES cbHeapProp = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
-		D3D12_RESOURCE_DESC cbResDesc = CD3DX12_RESOURCE_DESC::Buffer((sizeof(MaticesData) + 0xff) & ~0xff);
+		D3D12_RESOURCE_DESC cbResDesc = CD3DX12_RESOURCE_DESC::Buffer((sizeof(SceneMatrix) + 0xff) & ~0xff);
 		// Create constant buffer
 		_dev->CreateCommittedResource(
 			&cbHeapProp,
@@ -802,6 +806,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		mapMatrix->world = worldMat;
 		mapMatrix->view = viewMat;
 		mapMatrix->proj = projMat;
+		mapMatrix->eye = eye;
 
 
 		// create descriptor heap for CBV
