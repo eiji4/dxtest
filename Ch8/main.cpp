@@ -61,6 +61,11 @@ ID3D12DescriptorHeap* materialDescHeap = nullptr;
 std::vector<ID3D12Resource*> textureResources;
 std::vector<ID3D12Resource*> sphTextureResources;
 std::vector<ID3D12Resource*> spaTextureResources;
+std::vector<ID3D12Resource*> toonResources;
+
+std::map<std::string, ID3D12Resource*> _resourceTable;
+
+
 //std::string strModelPath = "../Model/Hatsune_Miku.pmd";
 std::string strModelPath = "../Model/hatune_miku_metal.pmd";
 //std::string strModelPath = "../Model/ruka.pmd";
@@ -271,6 +276,13 @@ std::wstring GetWideStringFromString(const std::string& str)
 ID3D12Resource* LoadTextureFromFile(std::string& texPath)
 {
 
+	auto it = _resourceTable.find(texPath);
+	if (it != _resourceTable.end())
+	{
+		return it->second;
+	}
+
+
 	using LoadLambda_t = std::function<HRESULT(const std::wstring& path, TexMetadata*, ScratchImage&)>;
 	std::map<std::string, LoadLambda_t> loadLambdaTable;
 
@@ -356,8 +368,8 @@ ID3D12Resource* LoadTextureFromFile(std::string& texPath)
 		return nullptr;
 	}
 
+	_resourceTable[texPath] = texBuff;
 	return texBuff;
-
 }
 
 
@@ -437,6 +449,53 @@ ID3D12Resource* CreateBlackTexture()
 	std::fill(data.begin(), data.end(), 0x00);
 
 	result = whiteTexBuff->WriteToSubresource(0, nullptr, data.data(), 4 * 4, data.size());
+	return whiteTexBuff;
+}
+
+
+ID3D12Resource* CreateGrayGradationTexture()
+{
+	// create heap property
+	D3D12_HEAP_PROPERTIES texHeapProp = {};
+	texHeapProp.Type = D3D12_HEAP_TYPE_CUSTOM;
+	texHeapProp.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_WRITE_BACK;
+	texHeapProp.MemoryPoolPreference = D3D12_MEMORY_POOL_L0;
+	texHeapProp.CreationNodeMask = 0;
+	texHeapProp.VisibleNodeMask = 0;
+
+	// create desc 
+	D3D12_RESOURCE_DESC texResDesc = {};
+	texResDesc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+	texResDesc.Width = 4;
+	texResDesc.Height = 256;
+	texResDesc.DepthOrArraySize = 1;
+	texResDesc.SampleDesc.Count = 1;
+	texResDesc.SampleDesc.Quality = 0;
+	texResDesc.MipLevels = 1;
+	texResDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+	texResDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+	texResDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
+
+
+	// create tex buffer
+	ID3D12Resource* whiteTexBuff = nullptr;
+	result = _dev->CreateCommittedResource(&texHeapProp, D3D12_HEAP_FLAG_NONE, &texResDesc, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, nullptr, IID_PPV_ARGS(&whiteTexBuff));
+	if (FAILED(result))
+	{
+		return nullptr;
+	}
+
+	std::vector<unsigned int> data(4 * 256);
+	auto it = data.begin();
+	unsigned int c = 0xff;
+	for (; it != data.end(); it += 4)
+	{
+		unsigned int col = (0xff << 24) | RGB(c, c, c);
+		std::fill(it, it+4, col);
+		c--;
+	}
+
+	result = whiteTexBuff->WriteToSubresource(0, nullptr, data.data(), 4 * sizeof(unsigned int), sizeof(unsigned int) * data.size());
 	return whiteTexBuff;
 }
 
@@ -630,60 +689,70 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		materialBuff->Unmap(0, nullptr);
 
 		// create an array of texture buffers
-		textureResources.resize(pmdMaterials.size());
-		sphTextureResources.resize(pmdMaterials.size());
-		spaTextureResources.resize(pmdMaterials.size());
-		for (int i=0; i<pmdMaterials.size(); i++)
 		{
-			if (strlen(pmdMaterials[i].texFilePath) == 0)
-			{
-				textureResources[i] = nullptr;
-				sphTextureResources[i] = nullptr;
-				spaTextureResources[i] = nullptr;
-			}
+			textureResources.resize(pmdMaterials.size());
+			sphTextureResources.resize(pmdMaterials.size());
+			spaTextureResources.resize(pmdMaterials.size());
+			toonResources.resize(pmdMaterials.size());
 
-			std::string texFileName = pmdMaterials[i].texFilePath;
-			std::string sphTextureFileName;
-			std::string spaTextureFileName;
-			if (std::count(texFileName.begin(), texFileName.end(), '*') > 0)
+			for (int i=0; i<pmdMaterials.size(); i++)
 			{
-				std::pair<std::string, std::string> namePair = SplitFileName(texFileName);
-				if (GetExtension(namePair.first) == "sph" || GetExtension(namePair.first) == "spa")
-				{					
-					sphTextureFileName = getSphOrSpa(namePair.first, "sph");
-					spaTextureFileName = getSphOrSpa(namePair.first, "spa");
-					texFileName = namePair.second;
-				}
-				else
-				{
-					texFileName = namePair.first;
-					sphTextureFileName = getSphOrSpa(namePair.second, "sph");
-					spaTextureFileName = getSphOrSpa(namePair.second, "spa");
 
-				}
-			}
-			else if (std::count(texFileName.begin(), texFileName.end(), '*') == 0)
-			{
-				if (GetExtension(texFileName) == "sph" || GetExtension(texFileName) == "spa")
-				{
-					sphTextureFileName = getSphOrSpa(texFileName, "sph");
-					spaTextureFileName = getSphOrSpa(texFileName, "spa");
-					texFileName = "";					
-				}
-				else
-				{
-					texFileName = texFileName;
-				}
-			}
+				std::string toonFilePath = "../toon/";
+				char toonFileName[16];
+				sprintf_s(toonFileName, "toon%02d.bmp", pmdMaterials[i].toonIdx + 1);
+				toonFilePath += toonFileName;
 
-			std::string texFilePath = GetTexturePathFromModelAndTexPath(strModelPath, texFileName.c_str());
-			std::string sphTexFilePath = GetTexturePathFromModelAndTexPath(strModelPath, sphTextureFileName.c_str());
-			std::string spaTexFilePath = GetTexturePathFromModelAndTexPath(strModelPath, spaTextureFileName.c_str());
-			textureResources[i] = LoadTextureFromFile(texFilePath);
-			sphTextureResources[i] = LoadTextureFromFile(sphTexFilePath);
-			spaTextureResources[i] = LoadTextureFromFile(spaTexFilePath);
+				if (strlen(pmdMaterials[i].texFilePath) == 0)
+				{
+					textureResources[i] = nullptr;
+					sphTextureResources[i] = nullptr;
+					spaTextureResources[i] = nullptr;
+				}
+
+				std::string texFileName = pmdMaterials[i].texFilePath;
+				std::string sphTextureFileName;
+				std::string spaTextureFileName;
+				if (std::count(texFileName.begin(), texFileName.end(), '*') > 0)
+				{
+					std::pair<std::string, std::string> namePair = SplitFileName(texFileName);
+					if (GetExtension(namePair.first) == "sph" || GetExtension(namePair.first) == "spa")
+					{					
+						sphTextureFileName = getSphOrSpa(namePair.first, "sph");
+						spaTextureFileName = getSphOrSpa(namePair.first, "spa");
+						texFileName = namePair.second;
+					}
+					else
+					{
+						texFileName = namePair.first;
+						sphTextureFileName = getSphOrSpa(namePair.second, "sph");
+						spaTextureFileName = getSphOrSpa(namePair.second, "spa");
+
+					}
+				}
+				else if (std::count(texFileName.begin(), texFileName.end(), '*') == 0)
+				{
+					if (GetExtension(texFileName) == "sph" || GetExtension(texFileName) == "spa")
+					{
+						sphTextureFileName = getSphOrSpa(texFileName, "sph");
+						spaTextureFileName = getSphOrSpa(texFileName, "spa");
+						texFileName = "";					
+					}
+					else
+					{
+						texFileName = texFileName;
+					}
+				}
+
+				std::string texFilePath = GetTexturePathFromModelAndTexPath(strModelPath, texFileName.c_str());
+				std::string sphTexFilePath = GetTexturePathFromModelAndTexPath(strModelPath, sphTextureFileName.c_str());
+				std::string spaTexFilePath = GetTexturePathFromModelAndTexPath(strModelPath, spaTextureFileName.c_str());
+				textureResources[i] = LoadTextureFromFile(texFilePath);
+				sphTextureResources[i] = LoadTextureFromFile(sphTexFilePath);
+				spaTextureResources[i] = LoadTextureFromFile(spaTexFilePath);
+				toonResources[i] = LoadTextureFromFile(toonFilePath);
+			}
 		}
-
 
 
 
@@ -691,7 +760,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		D3D12_DESCRIPTOR_HEAP_DESC matDescHeapDesc = {};
 		matDescHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 		matDescHeapDesc.NodeMask = 0;
-		matDescHeapDesc.NumDescriptors = materialNum * 4;
+		matDescHeapDesc.NumDescriptors = materialNum * 5;
 		matDescHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 		result = _dev->CreateDescriptorHeap(&matDescHeapDesc, IID_PPV_ARGS(&materialDescHeap));
 
@@ -709,6 +778,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		unsigned int increment = _dev->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 		ID3D12Resource* whiteTex = CreateWhiteTexture();
 		ID3D12Resource* blackTex = CreateBlackTexture();
+		ID3D12Resource* gradientTex = CreateGrayGradationTexture();
 		for (int i = 0; i < materialNum; i++)
 		{
 			// create constant buffer descriptor for matrix
@@ -757,6 +827,20 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 				_dev->CreateShaderResourceView(spaTextureResources[i], &srvDesc, matDescHeapHandle);
 			}
 			matDescHeapHandle.ptr += increment;
+
+			// create descriptor for gradient texture	
+			if (toonResources[i] == nullptr)
+			{
+				srvDesc.Format = gradientTex->GetDesc().Format;
+				_dev->CreateShaderResourceView(gradientTex, &srvDesc, matDescHeapHandle);
+			}
+			else
+			{
+				srvDesc.Format = toonResources[i]->GetDesc().Format;
+				_dev->CreateShaderResourceView(toonResources[i], &srvDesc, matDescHeapHandle);
+			}
+			matDescHeapHandle.ptr += increment;
+
 		}
 
 	}
@@ -922,7 +1006,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 		descTblRange[1].BaseShaderRegister = 1;
 		descTblRange[1].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 		// Texture register
-		descTblRange[2].NumDescriptors = 3;
+		descTblRange[2].NumDescriptors = 4;
 		descTblRange[2].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
 		descTblRange[2].BaseShaderRegister = 0;
 		descTblRange[2].OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
@@ -941,24 +1025,31 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 
 
 		// create sampler
-		D3D12_STATIC_SAMPLER_DESC samplerDesc = {};
-		samplerDesc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-		samplerDesc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-		samplerDesc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-		samplerDesc.BorderColor = D3D12_STATIC_BORDER_COLOR_TRANSPARENT_BLACK;
-		samplerDesc.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
-		samplerDesc.MaxLOD = D3D12_FLOAT32_MAX;
-		samplerDesc.MinLOD = 0.0f;
-		samplerDesc.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
-		samplerDesc.ComparisonFunc = D3D12_COMPARISON_FUNC_NEVER;
+		D3D12_STATIC_SAMPLER_DESC samplerDesc[2] = {};
+		samplerDesc[0].AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+		samplerDesc[0].AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+		samplerDesc[0].AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+		samplerDesc[0].BorderColor = D3D12_STATIC_BORDER_COLOR_TRANSPARENT_BLACK;
+		samplerDesc[0].Filter = D3D12_FILTER_MIN_MAG_MIP_POINT; // ‚¢‚Â‚Ì‚Ü‚É‚©D3D12_FILTER_MIN_MAG_MIP_LINEAR‚©‚ç•Ï‚í‚Á‚Ä‚¢‚éB
+		samplerDesc[0].MaxLOD = D3D12_FLOAT32_MAX;
+		samplerDesc[0].MinLOD = 0.0f;
+		samplerDesc[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+		samplerDesc[0].ComparisonFunc = D3D12_COMPARISON_FUNC_NEVER;
+		samplerDesc[0].ShaderRegister = 0;
+		samplerDesc[1] = samplerDesc[0];
+		samplerDesc[1].AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+		samplerDesc[1].AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+		samplerDesc[1].AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+		samplerDesc[1].ShaderRegister = 1;
+
 
 		// set up root signature
 		D3D12_ROOT_SIGNATURE_DESC rootSignatureDesc = {};
 		rootSignatureDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
 		rootSignatureDesc.pParameters = rootParm;
 		rootSignatureDesc.NumParameters = 2;
-		rootSignatureDesc.pStaticSamplers = &samplerDesc;
-		rootSignatureDesc.NumStaticSamplers = 1;
+		rootSignatureDesc.pStaticSamplers = samplerDesc;
+		rootSignatureDesc.NumStaticSamplers = 2;
 		ID3DBlob* rootSigBlob = nullptr;
 		result = D3D12SerializeRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1_0, &rootSigBlob, &_errorBlob);
 		result = _dev->CreateRootSignature(0, rootSigBlob->GetBufferPointer(), rootSigBlob->GetBufferSize(), IID_PPV_ARGS(&_rootSignature));
@@ -1133,7 +1224,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int)
 
 
 		D3D12_GPU_DESCRIPTOR_HANDLE matHandle = materialDescHeap->GetGPUDescriptorHandleForHeapStart();
-		unsigned int incrementSize = _dev->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV) * 4;
+		unsigned int incrementSize = _dev->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV) * 5;
 		unsigned int idxOffset = 0;
 		for (Material m : materials)
 		{
